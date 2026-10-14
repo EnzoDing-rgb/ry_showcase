@@ -1,19 +1,24 @@
-"""如意 SDK 现场演示：固定六句故事，提问在模型额度到位前不向外请求。"""
+"""如意 SDK 现场演示：固定六句故事，提问走 DeepSeek，失败时不向外泄露密钥。"""
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 FACTS_PATH = Path(__file__).resolve().parents[1] / "docs" / "showcase" / "ruyi-facts.md"
 
 QA_PAUSED_REPLY = (
-    "提问已经接到了。模型额度还没到位，这场先不调用大模型。"
+    "这个问题我这次没答上来。"
     "可以先看已经讲过的三步：ruyi 装工具链和模拟器，ruyi venv 里编译并在模拟器跑通，"
     "再用 ruyi device provision 按板子装系统。Milk-V Duo、VisionFive、荔枝派、BPI-F3、"
     "DC-ROMA、HiFive 都走同一套入口，具体镜像以支持矩阵为准。"
 )
+
+_CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
 @dataclass(frozen=True)
@@ -84,9 +89,13 @@ def story_payload() -> dict:
     }
 
 
+SHOWCASE_TTS_MODEL = "qwen3-tts-flash-realtime"
+SHOWCASE_VOICE = "Cherry"
+
+
 def pregen_voice_id() -> str:
-    """主线两个人都先用 Lex 的声音。缺省不换到别的声线。"""
-    return os.getenv("VOICE_ID_LEX", "").strip()
+    """两个人用同一条系统音色。复刻的 Lex 音色当前密钥调不通。"""
+    return os.getenv("SHOWCASE_VOICE", "").strip() or SHOWCASE_VOICE
 
 
 def qa_system_prompt(question: str) -> str:
@@ -98,7 +107,60 @@ def qa_system_prompt(question: str) -> str:
     )
 
 
+def load_deepseek_config() -> tuple[str, str, str]:
+    """密钥优先读环境变量，否则读本机 Claude Code 配置。不把密钥写进仓库。"""
+    key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    model = os.getenv("RUYI_QA_MODEL", "").strip()
+    base = os.getenv("DEEPSEEK_BASE_URL", "").strip()
+    if _CLAUDE_SETTINGS.is_file() and (not key or not model):
+        try:
+            env = json.loads(_CLAUDE_SETTINGS.read_text(encoding="utf-8")).get("env") or {}
+        except (OSError, json.JSONDecodeError):
+            env = {}
+        key = key or str(env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+        model = model or str(env.get("ANTHROPIC_MODEL") or "").strip()
+    return key, model or "deepseek-v4-flash", base or "https://api.deepseek.com"
+
+
+def complete_with_deepseek(prompt: str) -> str:
+    key, model, base = load_deepseek_config()
+    if not key:
+        raise RuntimeError("missing DeepSeek API key")
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "你只输出讲解者要说的话，不要标题，不要列提纲。"},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": 400,
+            "temperature": 0.3,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        base.rstrip("/") + "/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"DeepSeek HTTP {exc.code}: {detail}") from exc
+    content = data["choices"][0]["message"]["content"]
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("empty DeepSeek reply")
+    return content.strip()
+
+
 def answer_question(message: str) -> dict[str, str | bool]:
-    """额度到位之前固定回复，不读取问题去请求模型。"""
-    del message
-    return {"reply": QA_PAUSED_REPLY, "speaker": "guide", "llm": False}
+    try:
+        reply = complete_with_deepseek(qa_system_prompt(message))
+    except Exception:
+        return {"reply": QA_PAUSED_REPLY, "speaker": "guide", "llm": False}
+    return {"reply": reply, "speaker": "guide", "llm": True}

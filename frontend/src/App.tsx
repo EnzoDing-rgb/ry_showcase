@@ -217,7 +217,7 @@ function App() {
         {stage.phase === 'qa' && (
           <section className="showcase-qa">
             <h2>现场提问</h2>
-            <p className="showcase-note">问题交给讲解者。模型额度还没到位，现在只会返回本地说明，不会请求大模型。</p>
+            <p className="showcase-note">问题交给讲解者。回答按事实底稿生成。</p>
             <div className="showcase-qa-row">
               <input
                 value={draft}

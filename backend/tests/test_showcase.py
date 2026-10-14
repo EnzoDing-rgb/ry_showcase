@@ -44,12 +44,28 @@ def test_facts_cover_positioning_commands_and_boards():
     assert "不要编造" in facts
 
 
-def test_question_does_not_call_a_model(monkeypatch):
-    def boom(*_args, **_kwargs):
-        raise AssertionError("should not touch the network")
+def test_answer_uses_model_reply(monkeypatch):
+    seen: dict[str, str] = {}
 
-    monkeypatch.setattr("urllib.request.urlopen", boom)
-    result = answer_question("Milk-V Duo 用哪条命令装系统？")
+    def fake(prompt: str) -> str:
+        seen["prompt"] = prompt
+        return "Duo 和 VisionFive 都用 ruyi device provision 按板子装系统。"
+
+    monkeypatch.setattr("backend.showcase.complete_with_deepseek", fake)
+    result = answer_question("Duo 怎么装？")
+    assert result["llm"] is True
+    assert result["speaker"] == "guide"
+    assert "device provision" in result["reply"]
+    assert "Duo 怎么装" in seen["prompt"]
+    assert "不要编造" in seen["prompt"]
+
+
+def test_answer_falls_back_when_model_fails(monkeypatch):
+    def boom(_prompt: str) -> str:
+        raise RuntimeError("down")
+
+    monkeypatch.setattr("backend.showcase.complete_with_deepseek", boom)
+    result = answer_question("随便问问")
     assert result["llm"] is False
     assert result["speaker"] == "guide"
     assert result["reply"] == QA_PAUSED_REPLY

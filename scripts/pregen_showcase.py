@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""把六句固定台词合成 mp3。两个人都用 VOICE_ID_LEX。
+"""把六句固定台词合成 mp3。
 
-会消耗 DashScope 额度。没充值时只跑 --dry-run，不要去掉该参数。
+这个账号能调通的是 qwen3-tts-flash-realtime。Lex 的复刻音色绑在
+qwen3-tts-vc-realtime-2026-01-15 上，当前密钥调用该模型会返回 Model not exist，
+所以两人都先用系统音色 Cherry（芊悦，普通话）。
 
     .venv/bin/python scripts/pregen_showcase.py --dry-run
     .venv/bin/python scripts/pregen_showcase.py
@@ -16,9 +18,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from backend.showcase import STORY, pregen_voice_id  # noqa: E402
+from backend.showcase import SHOWCASE_TTS_MODEL, SHOWCASE_VOICE, STORY  # noqa: E402
 from scripts.pregen_lex_opening import pcm_to_mp3, synth_pcm  # noqa: E402
-from backend.tts_manager import TTS_MODEL, TTS_WS_URL  # noqa: E402
+from backend.tts_manager import TTS_WS_URL  # noqa: E402
 
 
 def _load_dotenv() -> None:
@@ -41,21 +43,18 @@ def main() -> int:
     args = parser.parse_args()
     _load_dotenv()
 
-    voice = pregen_voice_id()
+    voice = os.getenv("SHOWCASE_VOICE", "").strip() or SHOWCASE_VOICE
+    model = os.getenv("SHOWCASE_TTS_MODEL", "").strip() or SHOWCASE_TTS_MODEL
     if args.dry_run:
-        print(f"voice={'set' if voice else 'MISSING VOICE_ID_LEX'} turns={len(STORY)}")
+        print(f"voice={voice} model={model} turns={len(STORY)}")
         for turn in STORY:
             print(f"{turn.index} {turn.speaker} {turn.audio} chars={len(turn.text)}")
         return 0
 
     api_key = (os.getenv("DASHSCOPE_API_KEY") or "").strip()
-    model = (os.getenv("TTS_MODEL") or "").strip() or TTS_MODEL
     ws_url = (os.getenv("TTS_WS_URL") or "").strip() or TTS_WS_URL
     if not api_key:
         print("Missing DASHSCOPE_API_KEY", file=sys.stderr)
-        return 2
-    if not voice:
-        print("Missing VOICE_ID_LEX", file=sys.stderr)
         return 2
 
     for turn in STORY:
