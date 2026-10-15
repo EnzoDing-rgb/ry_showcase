@@ -2,7 +2,7 @@
 
 全栈小应用（FastAPI + React/Vite）：两个人物讲一场固定故事，说明如意 SDK 怎么用同一套 `ruyi` 对待许多块 RISC-V 开发板。主线台词写死并预先合成语音。观众提问把事实底稿交给 DeepSeek，密钥读环境变量 `DEEPSEEK_API_KEY`，没有则读本机 Claude Code 配置，不写入仓库。
 
-故事与事实底稿：[`backend/showcase.py`](backend/showcase.py)、[`docs/showcase/ruyi-facts.md`](docs/showcase/ruyi-facts.md)。额度到位后合成六段语音（系统音色 Cherry，模型 `qwen3-tts-flash-realtime`）：
+故事与事实底稿：[`backend/showcase.py`](backend/showcase.py)、[`docs/showcase/ruyi-facts.md`](docs/showcase/ruyi-facts.md)。六段语音用 Lex 的复刻音色，绑在 `qwen-audio-3.1-tts-flash`。音色 ID 放在本机 `.env` 的 `SHOWCASE_VOICE`，不写入仓库：
 
 ```bash
 .venv/bin/python scripts/pregen_showcase.py --dry-run

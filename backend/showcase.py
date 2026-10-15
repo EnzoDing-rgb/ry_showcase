@@ -89,13 +89,15 @@ def story_payload() -> dict:
     }
 
 
-SHOWCASE_TTS_MODEL = "qwen3-tts-flash-realtime"
-SHOWCASE_VOICE = "Cherry"
+SHOWCASE_TTS_MODEL = "qwen-audio-3.1-tts-flash"
 
 
 def pregen_voice_id() -> str:
-    """两个人用同一条系统音色。复刻的 Lex 音色当前密钥调不通。"""
-    return os.getenv("SHOWCASE_VOICE", "").strip() or SHOWCASE_VOICE
+    """两个人共用 Lex 的复刻音色。音色 ID 只放在本机 SHOWCASE_VOICE，不写入仓库。"""
+    voice = os.getenv("SHOWCASE_VOICE", "").strip()
+    if not voice:
+        raise RuntimeError("SHOWCASE_VOICE is not set")
+    return voice
 
 
 def qa_system_prompt(question: str) -> str:
