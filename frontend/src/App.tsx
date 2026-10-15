@@ -189,8 +189,8 @@ function App() {
         </header>
 
         <div className="showcase-cast">
-          <RoleCard {...CAST.developer} isLeft />
-          <RoleCard {...CAST.guide} isLeft={false} />
+          <RoleCard {...CAST.guide} isLeft />
+          <RoleCard {...CAST.developer} isLeft={false} />
         </div>
 
         {loadError && <p className="showcase-note">{loadError}</p>}
@@ -202,7 +202,7 @@ function App() {
             return (
               <article
                 key={turn.index}
-                className={`showcase-line${active ? ' is-active' : ''}${turn.speaker === 'guide' ? ' is-guide' : ''}`}
+                className={`showcase-line${active ? ' is-active' : ''}${turn.speaker === 'developer' ? ' is-right' : ''}`}
               >
                 <img src={person.avatarSrc} alt="" />
                 <div>
