@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from .models import StartDebateResponse, DebateStatusResponse, Speaker, ChatMessage
 from .debate_runner import runner
-from .showcase import answer_question, story_payload
+from .showcase import answer_aloud, story_payload
 from .tts_manager import init_tts, TtsManager
 
 # Load environment
@@ -165,8 +165,8 @@ async def showcase_script():
 
 @app.post("/api/showcase/ask")
 async def showcase_ask(body: ShowcaseAskRequest):
-    """额度到位前只回本地兜底，不向外请求。"""
-    return answer_question(body.message)
+    """讲解者按事实底稿作答，并把这句合成语音。"""
+    return await asyncio.to_thread(answer_aloud, body.message)
 
 
 @app.websocket("/ws/debate-audio")

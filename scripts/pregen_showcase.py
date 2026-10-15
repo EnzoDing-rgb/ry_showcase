@@ -10,18 +10,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
-import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from backend.showcase import SHOWCASE_TTS_MODEL, STORY, pregen_voice_id  # noqa: E402
-
-SYNTH_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+from backend.showcase import SHOWCASE_TTS_MODEL, STORY, synthesize_reply  # noqa: E402
 
 
 def _load_dotenv() -> None:
@@ -38,37 +34,6 @@ def _load_dotenv() -> None:
             os.environ[key] = value
 
 
-def synth_mp3(text: str, *, voice: str, model: str, api_key: str) -> bytes:
-    body = json.dumps(
-        {
-            "model": model,
-            "input": {
-                "text": text,
-                "voice": voice,
-                "format": "mp3",
-                "sample_rate": 24000,
-            },
-        }
-    ).encode()
-    request = urllib.request.Request(
-        SYNTH_URL,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        payload = json.loads(response.read().decode())
-    audio_url = payload["output"]["audio"]["url"]
-    with urllib.request.urlopen(audio_url, timeout=120) as response:
-        audio = response.read()
-    if len(audio) < 1000 or not audio.startswith(b"ID3"):
-        raise RuntimeError(f"synthesis did not return an mp3 ({len(audio)} bytes)")
-    return audio
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="只打印六句和模型，不请求语音接口")
@@ -83,16 +48,14 @@ def main() -> int:
             print(f"{turn.index} {turn.speaker} {turn.audio} chars={len(turn.text)}")
         return 0
 
-    api_key = (os.getenv("DASHSCOPE_API_KEY") or "").strip()
-    if not api_key:
+    if not (os.getenv("DASHSCOPE_API_KEY") or "").strip():
         print("Missing DASHSCOPE_API_KEY", file=sys.stderr)
         return 2
-    voice = pregen_voice_id()
 
     for turn in STORY:
         dest = REPO / "frontend" / "public" / turn.audio.lstrip("/")
         print(f"Synthesizing {dest.name} ...", flush=True)
-        dest.write_bytes(synth_mp3(turn.text, voice=voice, model=model, api_key=api_key))
+        dest.write_bytes(synthesize_reply(turn.text))
         print(f"Wrote {dest} ({dest.stat().st_size} bytes)")
     return 0
 

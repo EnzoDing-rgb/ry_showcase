@@ -7,6 +7,7 @@ import wuweiFace from './assets/faces/wuwei.png'
 import {
   canPlayAudioResponse,
   initialShowcaseState,
+  mp3BytesFromBase64,
   showcaseReducer,
   type ShowcaseState,
 } from './showcase/playback'
@@ -29,6 +30,7 @@ interface StoryPayload {
 interface QaItem {
   question: string
   reply: string
+  audioBase64: string
 }
 
 const CAST = {
@@ -56,7 +58,24 @@ function App() {
   const [asking, setAsking] = useState(false)
   const [askError, setAskError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const replyUrl = useRef<string | null>(null)
   const total = story?.turns.length ?? 0
+
+  const playReply = useCallback(async (encoded: string) => {
+    const bytes = mp3BytesFromBase64(encoded)
+    const el = audioRef.current
+    if (!bytes || !el) return false
+    if (replyUrl.current) URL.revokeObjectURL(replyUrl.current)
+    const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'audio/mpeg' }))
+    replyUrl.current = url
+    el.src = url
+    try {
+      await el.play()
+      return true
+    } catch {
+      return false
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -142,9 +161,15 @@ function App() {
         body: JSON.stringify({ message }),
       })
       if (!res.ok) throw new Error(`提问接口 ${res.status}`)
-      const body = (await res.json()) as { reply: string }
-      setQa((items) => [...items, { question: message, reply: body.reply }])
+      const body = (await res.json()) as { reply: string; audio_base64?: string }
+      const item = {
+        question: message,
+        reply: body.reply,
+        audioBase64: body.audio_base64 ?? '',
+      }
+      setQa((items) => [...items, item])
       setDraft('')
+      if (item.audioBase64) await playReply(item.audioBase64)
     } catch (err: unknown) {
       setAskError(err instanceof Error ? err.message : '提问失败')
     } finally {
@@ -217,7 +242,7 @@ function App() {
         {stage.phase === 'qa' && (
           <section className="showcase-qa">
             <h2>现场提问</h2>
-            <p className="showcase-note">问题交给讲解者。回答按事实底稿生成。</p>
+            <p className="showcase-note">问题交给讲解者。回答按事实底稿生成，并用讲解者的声音说出来。</p>
             <div className="showcase-qa-row">
               <input
                 value={draft}
@@ -237,6 +262,13 @@ function App() {
               <div key={i} className="showcase-qa-item">
                 <p className="showcase-q">观众：{item.question}</p>
                 <p className="showcase-a">讲解者：{item.reply}</p>
+                {item.audioBase64 ? (
+                  <button className="download-button" type="button" onClick={() => void playReply(item.audioBase64)}>
+                    再听一遍
+                  </button>
+                ) : (
+                  <p className="showcase-note">这句没有合成出来。</p>
+                )}
               </div>
             ))}
           </section>

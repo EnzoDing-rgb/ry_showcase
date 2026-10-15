@@ -1,7 +1,8 @@
-"""如意 SDK 现场演示：固定六句故事，提问走 DeepSeek，失败时不向外泄露密钥。"""
+"""如意 SDK 现场演示：固定六句故事，提问走 DeepSeek，回答再用 Lex 的音色说出来。"""
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import urllib.error
@@ -90,6 +91,7 @@ def story_payload() -> dict:
 
 
 SHOWCASE_TTS_MODEL = "qwen-audio-3.1-tts-flash"
+SYNTH_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
 
 
 def pregen_voice_id() -> str:
@@ -166,3 +168,57 @@ def answer_question(message: str) -> dict[str, str | bool]:
     except Exception:
         return {"reply": QA_PAUSED_REPLY, "speaker": "guide", "llm": False}
     return {"reply": reply, "speaker": "guide", "llm": True}
+
+
+def synthesize_reply(text: str) -> bytes:
+    """把讲解者要说的话合成 mp3。音色和模型与六段预合成台词相同。"""
+    spoken = text.strip()
+    if not spoken:
+        raise RuntimeError("empty reply")
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("missing DashScope API key")
+    model = os.getenv("SHOWCASE_TTS_MODEL", "").strip() or SHOWCASE_TTS_MODEL
+    voice = pregen_voice_id()
+    body = json.dumps(
+        {
+            "model": model,
+            "input": {
+                "text": spoken,
+                "voice": voice,
+                "format": "mp3",
+                "sample_rate": 24000,
+            },
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        SYNTH_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    audio_url = payload["output"]["audio"]["url"]
+    with urllib.request.urlopen(audio_url, timeout=120) as response:
+        audio = response.read()
+    if len(audio) < 1000 or not audio.startswith(b"ID3"):
+        raise RuntimeError(f"synthesis did not return an mp3 ({len(audio)} bytes)")
+    return audio
+
+
+def answer_aloud(message: str) -> dict[str, str | bool]:
+    """文字回答照常返回。语音合成失败时仍给出文字，spoken 为 false。"""
+    result = answer_question(message)
+    try:
+        audio = synthesize_reply(str(result["reply"]))
+    except Exception:
+        return {**result, "spoken": False, "audio_base64": ""}
+    return {
+        **result,
+        "spoken": True,
+        "audio_base64": base64.b64encode(audio).decode("ascii"),
+    }

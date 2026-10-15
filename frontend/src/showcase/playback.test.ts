@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canPlayAudioResponse, initialShowcaseState, showcaseReducer } from './playback'
+import { canPlayAudioResponse, initialShowcaseState, mp3BytesFromBase64, showcaseReducer } from './playback'
 
 const total = 6
 
@@ -26,6 +26,15 @@ describe('showcaseReducer', () => {
     const started = showcaseReducer(initialShowcaseState, { type: 'start' }, total)
     const skipped = showcaseReducer(started, { type: 'skip-to-qa' }, total)
     expect(skipped.phase).toBe('qa')
+  })
+
+  it('turns a base64 mp3 into bytes and rejects anything else', () => {
+    const encoded = btoa('ID3spoken')
+    const bytes = mp3BytesFromBase64(encoded)
+    expect(bytes).not.toBeNull()
+    expect(String.fromCharCode(...(bytes ?? []))).toBe('ID3spoken')
+    expect(mp3BytesFromBase64('')).toBeNull()
+    expect(mp3BytesFromBase64(btoa('not-audio'))).toBeNull()
   })
 
   it('treats the SPA html fallback as missing audio', () => {
